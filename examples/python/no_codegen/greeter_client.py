@@ -20,21 +20,40 @@ Several APIs used in this example are in an experimental state.
 """
 
 from __future__ import print_function
+
 import logging
 
-import grpc
 import grpc.experimental
-
 # NOTE: The path to the .proto file must be reachable from an entry
 # on sys.path. Use sys.path.insert or set the $PYTHONPATH variable to
 # import from files located elsewhere on the filesystem.
-
-protos = grpc.protos("helloworld.proto")
-services = grpc.services("helloworld.proto")
+from google.protobuf.json_format import MessageToDict
 
 logging.basicConfig()
 
-response = services.Greeter.SayHello(protos.HelloRequest(name='you'),
-                                     'localhost:50051',
-                                     insecure=True)
-print("Greeter client received: " + response.message)
+
+def rpc_invoke(target, proto_file, service, method, body):
+    protos, services = grpc.protos_and_services(proto_file)
+    fn = getattr(getattr(services, service), method)
+    co_names = fn.__code__.co_names
+    request_type = co_names[co_names.index('SerializeToString') - 1]
+
+    request = getattr(protos, request_type)(**body)
+    print(request.SerializeToString().hex(':'))
+    response = fn(
+        getattr(protos, request_type)(**body),
+        target,
+        insecure=True
+    )
+    return MessageToDict(response, preserving_proto_field_name=True)
+
+
+resp = rpc_invoke(
+    'localhost:50051',
+    "helloworld.proto",
+    'Greeter',
+    'SayHello',
+    {"name": "Tom"}
+)
+
+print(resp)
